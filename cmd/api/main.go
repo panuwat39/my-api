@@ -4,25 +4,23 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/panuwat39/my-api/infrastructure/config"
+	"github.com/panuwat39/my-api/infrastructure/router"
 )
 
 func main() {
-	mux := http.NewServeMux()
+	cfg := config.Load()
+	handler := router.New()
+	address := ":" + cfg.HTTPPort
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+	fmt.Printf(
+		"server running in %s mode on http://localhost%s\n",
+		cfg.AppEnv,
+		address,
+	)
 
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			log.Printf("write response error: %v", err)
-		}
-	})
-
-	address := ":8080"
-
-	fmt.Printf("server running on http://localhost%s\n", address)
-
-	if err := http.ListenAndServe(address, mux); err != nil {
+	if err := http.ListenAndServe(address, handler); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
