@@ -11,5 +11,8 @@ func New() http.Handler {
 
 	registerV1Routes(mux)
 
-	return middleware.RequestID(mux)
+	handler := middleware.RequestID(mux)
+	handler = middleware.Recovery(handler)
+
+	return handler
 }
