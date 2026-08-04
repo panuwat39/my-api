@@ -1,9 +1,9 @@
 package router
 
 import (
-	"encoding/json"
-	"log"
 	"net/http"
+
+	"github.com/panuwat39/my-api/internal/shared/response"
 )
 
 func registerV1Routes(mux *http.ServeMux) {
@@ -13,19 +13,22 @@ func registerV1Routes(mux *http.ServeMux) {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
+		_ = response.Error(
+			w,
+			http.StatusMethodNotAllowed,
+			"METHOD_NOT_ALLOWED",
+			"method not allowed",
+		)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	response := map[string]string{
-		"status":  "ok",
-		"version": "v1",
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("write health response error: %v", err)
-	}
+	_ = response.Success(
+		w,
+		http.StatusOK,
+		map[string]string{
+			"status":  "ok",
+			"version": "v1",
+		},
+	)
 }
