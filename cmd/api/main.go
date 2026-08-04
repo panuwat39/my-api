@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,31 +9,38 @@ import (
 
 	"github.com/panuwat39/my-api/infrastructure/config"
 	"github.com/panuwat39/my-api/infrastructure/database"
+	"github.com/panuwat39/my-api/infrastructure/logger"
 	"github.com/panuwat39/my-api/infrastructure/router"
 	"github.com/panuwat39/my-api/infrastructure/server"
 )
 
 func main() {
 	cfg := config.Load()
+	appLogger := logger.New(cfg.AppEnv)
 
 	mongoClient, err := database.ConnectMongoDB(cfg.MongoURI)
 	if err != nil {
-		log.Fatalf("MongoDB connection error: %v", err)
+		appLogger.Error(
+			"mongodb connection failed",
+			"error", err,
+		)
+		os.Exit(1)
 	}
 
 	mongoDatabase := mongoClient.Database(cfg.MongoDatabase)
 	_ = mongoDatabase
 
-	handler := router.New()
+	handler := router.New(appLogger)
 	httpServer := server.NewHTTPServer(cfg.HTTPPort, handler)
 
 	serverErrors := make(chan error, 1)
 
 	go func() {
-		log.Printf(
-			"server running in %s mode on http://localhost:%s",
-			cfg.AppEnv,
-			cfg.HTTPPort,
+		appLogger.Info(
+			"server starting",
+			"environment", cfg.AppEnv,
+			"address", "http://localhost:"+cfg.HTTPPort,
+			"database", cfg.MongoDatabase,
 		)
 
 		serverErrors <- httpServer.Start()
@@ -46,13 +52,22 @@ func main() {
 		syscall.SIGINT,
 		syscall.SIGTERM,
 	)
+	defer signal.Stop(shutdownSignal)
 
 	select {
 	case signalReceived := <-shutdownSignal:
-		log.Printf("shutdown signal received: %s", signalReceived)
+		appLogger.Warn(
+			"shutdown signal received",
+			"signal", signalReceived.String(),
+		)
 
 	case err := <-serverErrors:
-		log.Printf("server stopped unexpectedly: %v", err)
+		if err != nil {
+			appLogger.Error(
+				"server stopped unexpectedly",
+				"error", err,
+			)
+		}
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(
@@ -62,12 +77,18 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP server shutdown error: %v", err)
+		appLogger.Error(
+			"http server shutdown failed",
+			"error", err,
+		)
 	}
 
 	if err := database.DisconnectMongoDB(mongoClient); err != nil {
-		log.Printf("MongoDB disconnect error: %v", err)
+		appLogger.Error(
+			"mongodb disconnect failed",
+			"error", err,
+		)
 	}
 
-	log.Println("server stopped")
+	appLogger.Info("server stopped")
 }
