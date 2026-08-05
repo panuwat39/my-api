@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/mail"
 	"strings"
 	"time"
@@ -20,7 +21,10 @@ func New(repository port.UserRepository) *Service {
 	}
 }
 
-func (s *Service) Create(ctx context.Context, request model.CreateUserRequest) (model.User, error) {
+func (s *Service) Create(
+	ctx context.Context,
+	request model.CreateUserRequest,
+) (model.User, error) {
 	name := strings.TrimSpace(request.Name)
 	email := strings.ToLower(strings.TrimSpace(request.Email))
 
@@ -33,8 +37,13 @@ func (s *Service) Create(ctx context.Context, request model.CreateUserRequest) (
 	}
 
 	existingUser, err := s.repository.FindByEmail(ctx, email)
-	if err == nil && existingUser.ID != "" {
+
+	switch {
+	case err == nil && existingUser.ID != "":
 		return model.User{}, ErrEmailAlreadyExists
+
+	case err != nil && !errors.Is(err, ErrUserNotFound):
+		return model.User{}, err
 	}
 
 	now := time.Now().UTC()
@@ -92,10 +101,14 @@ func (s *Service) Update(
 		}
 
 		existingUser, err := s.repository.FindByEmail(ctx, email)
-		if err == nil && existingUser.ID != user.ID {
-			return model.User{}, ErrEmailAlreadyExists
-		}
 
+		switch {
+		case err == nil && existingUser.ID != user.ID:
+			return model.User{}, ErrEmailAlreadyExists
+
+		case err != nil && !errors.Is(err, ErrUserNotFound):
+			return model.User{}, err
+		}
 		user.Email = email
 	}
 
