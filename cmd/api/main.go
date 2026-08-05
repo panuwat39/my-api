@@ -12,6 +12,8 @@ import (
 	"github.com/panuwat39/my-api/infrastructure/logger"
 	"github.com/panuwat39/my-api/infrastructure/router"
 	"github.com/panuwat39/my-api/infrastructure/server"
+
+	mongodbmigration "github.com/panuwat39/my-api/migrations/mongodb"
 )
 
 func main() {
@@ -28,7 +30,33 @@ func main() {
 	}
 
 	mongoDatabase := mongoClient.Database(cfg.MongoDatabase)
-	_ = mongoDatabase
+
+	migrationCtx, migrationCancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+
+	if err := mongodbmigration.CreateUserIndexes(
+		migrationCtx,
+		mongoDatabase,
+	); err != nil {
+		migrationCancel()
+
+		appLogger.Error(
+			"mongodb migration failed",
+			"error", err,
+		)
+
+		_ = database.DisconnectMongoDB(mongoClient)
+		os.Exit(1)
+	}
+
+	migrationCancel()
+
+	appLogger.Info(
+		"mongodb indexes ready",
+		"database", cfg.MongoDatabase,
+	)
 
 	handler := router.New(appLogger)
 	httpServer := server.NewHTTPServer(cfg.HTTPPort, handler)
