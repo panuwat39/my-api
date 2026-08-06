@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 
 	sharedmiddleware "github.com/panuwat39/my-api/internal/shared/middleware"
+	sharedvalidator "github.com/panuwat39/my-api/internal/shared/validator"
 	userroute "github.com/panuwat39/my-api/internal/user/route"
 )
 
@@ -18,9 +19,10 @@ type Dependencies struct {
 
 func New(dependencies Dependencies) *fiber.App {
 	app := fiber.New(fiber.Config{
-		AppName:      "my-api",
-		BodyLimit:    1 * 1024 * 1024,
-		ErrorHandler: errorHandler(dependencies.Logger),
+		AppName:         "my-api",
+		BodyLimit:       1 * 1024 * 1024,
+		ErrorHandler:    errorHandler(dependencies.Logger),
+		StructValidator: sharedvalidator.New(),
 	})
 
 	app.Use(recoverer.New(recoverer.Config{
