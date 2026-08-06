@@ -1,42 +1,55 @@
-// package router
-
-// import (
-// 	"net/http"
-
-// 	"github.com/panuwat39/my-api/internal/shared/middleware"
-// )
-
-// func New() http.Handler {
-// 	mux := http.NewServeMux()
-
-// 	registerV1Routes(mux)
-
-// 	handler := middleware.RequestID(mux)
-// 	handler = middleware.Logging(handler)
-// 	handler = middleware.Recovery(handler)
-
-// 	return handler
-// }
-
 package router
 
 import (
 	"log/slog"
-	"net/http"
 
-	"github.com/panuwat39/my-api/internal/shared/middleware"
+	"github.com/gofiber/fiber/v3"
+
+	userroute "github.com/panuwat39/my-api/internal/user/route"
 )
 
-func New(logger *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
+type Dependencies struct {
+	Logger         *slog.Logger
+	UserController userroute.UserController
+}
 
-	registerV1Routes(mux)
+func New(dependencies Dependencies) *fiber.App {
+	app := fiber.New(fiber.Config{
+		AppName:      "my-api",
+		BodyLimit:    1 * 1024 * 1024,
+		ErrorHandler: errorHandler(dependencies.Logger),
+	})
 
-	var handler http.Handler = mux
+	registerV1Routes(app)
 
-	handler = middleware.Logging(logger, handler)
-	handler = middleware.RequestID(handler)
-	handler = middleware.Recovery(logger, handler)
+	if dependencies.UserController != nil {
+		userroute.RegisterV1(app, dependencies.UserController)
+	}
 
-	return handler
+	return app
+}
+
+func errorHandler(logger *slog.Logger) fiber.ErrorHandler {
+	return func(c fiber.Ctx, err error) error {
+		code := fiber.StatusInternalServerError
+
+		if fiberError, ok := err.(*fiber.Error); ok {
+			code = fiberError.Code
+		}
+
+		logger.Error(
+			"http request failed",
+			"method", c.Method(),
+			"path", c.Path(),
+			"status", code,
+			"error", err,
+		)
+
+		return c.Status(code).JSON(fiber.Map{
+			"error": fiber.Map{
+				"code":    "HTTP_ERROR",
+				"message": "request failed",
+			},
+		})
+	}
 }

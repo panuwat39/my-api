@@ -13,6 +13,10 @@ import (
 	"github.com/panuwat39/my-api/infrastructure/router"
 	"github.com/panuwat39/my-api/infrastructure/server"
 
+	usercontroller "github.com/panuwat39/my-api/internal/user/controller"
+	userrepository "github.com/panuwat39/my-api/internal/user/repository"
+	userservice "github.com/panuwat39/my-api/internal/user/service"
+
 	mongodbmigration "github.com/panuwat39/my-api/migrations/mongodb"
 )
 
@@ -47,7 +51,13 @@ func main() {
 			"error", err,
 		)
 
-		_ = database.DisconnectMongoDB(mongoClient)
+		if disconnectErr := database.DisconnectMongoDB(mongoClient); disconnectErr != nil {
+			appLogger.Error(
+				"mongodb disconnect failed",
+				"error", disconnectErr,
+			)
+		}
+
 		os.Exit(1)
 	}
 
@@ -58,8 +68,30 @@ func main() {
 		"database", cfg.MongoDatabase,
 	)
 
-	handler := router.New(appLogger)
-	httpServer := server.NewHTTPServer(cfg.HTTPPort, handler)
+	userRepository := userrepository.NewMongoDBRepository(
+		mongoDatabase,
+	)
+
+	userService := userservice.New(
+		userRepository,
+	)
+
+	userController := usercontroller.New(
+		userService,
+		appLogger,
+	)
+
+	app := router.New(
+		router.Dependencies{
+			Logger:         appLogger,
+			UserController: userController,
+		},
+	)
+
+	httpServer := server.NewHTTPServer(
+		cfg.HTTPPort,
+		app,
+	)
 
 	serverErrors := make(chan error, 1)
 
@@ -75,6 +107,7 @@ func main() {
 	}()
 
 	shutdownSignal := make(chan os.Signal, 1)
+
 	signal.Notify(
 		shutdownSignal,
 		syscall.SIGINT,
@@ -98,11 +131,11 @@ func main() {
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(
+	shutdownCtx, shutdownCancel := context.WithTimeout(
 		context.Background(),
 		10*time.Second,
 	)
-	defer cancel()
+	defer shutdownCancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		appLogger.Error(

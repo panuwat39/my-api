@@ -2,41 +2,37 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
-	"time"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 type HTTPServer struct {
-	server *http.Server
+	app     *fiber.App
+	address string
 }
 
-func NewHTTPServer(port string, handler http.Handler) *HTTPServer {
+func NewHTTPServer(
+	port string,
+	app *fiber.App,
+) *HTTPServer {
 	return &HTTPServer{
-		server: &http.Server{
-			Addr:              ":" + port,
-			Handler:           handler,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       10 * time.Second,
-			WriteTimeout:      10 * time.Second,
-			IdleTimeout:       60 * time.Second,
-		},
+		app:     app,
+		address: ":" + port,
 	}
 }
 
 func (s *HTTPServer) Start() error {
-	if err := s.server.ListenAndServe(); err != nil &&
-		!errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("start HTTP server: %w", err)
+	if err := s.app.Listen(s.address); err != nil {
+		return fmt.Errorf("start Fiber server: %w", err)
 	}
 
 	return nil
 }
 
 func (s *HTTPServer) Shutdown(ctx context.Context) error {
-	if err := s.server.Shutdown(ctx); err != nil {
-		return fmt.Errorf("shutdown HTTP server: %w", err)
+	if err := s.app.ShutdownWithContext(ctx); err != nil {
+		return fmt.Errorf("shutdown Fiber server: %w", err)
 	}
 
 	return nil

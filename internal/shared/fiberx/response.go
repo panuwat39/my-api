@@ -1,9 +1,6 @@
-package response
+package fiberx
 
-import (
-	"encoding/json"
-	"net/http"
-)
+import "github.com/gofiber/fiber/v3"
 
 type SuccessResponse struct {
 	Data any `json:"data"`
@@ -18,17 +15,12 @@ type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
 
-func JSON(w http.ResponseWriter, statusCode int, payload any) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	return json.NewEncoder(w).Encode(payload)
-}
-
-func Success(w http.ResponseWriter, statusCode int, data any) error {
-	return JSON(
-		w,
-		statusCode,
+func Success(
+	c fiber.Ctx,
+	statusCode int,
+	data any,
+) error {
+	return c.Status(statusCode).JSON(
 		SuccessResponse{
 			Data: data,
 		},
@@ -36,14 +28,12 @@ func Success(w http.ResponseWriter, statusCode int, data any) error {
 }
 
 func Error(
-	w http.ResponseWriter,
+	c fiber.Ctx,
 	statusCode int,
 	code string,
 	message string,
 ) error {
-	return JSON(
-		w,
-		statusCode,
+	return c.Status(statusCode).JSON(
 		ErrorResponse{
 			Error: ErrorDetail{
 				Code:    code,
