@@ -1,86 +1,58 @@
-// package middleware
-
-// import (
-// 	"log"
-// 	"net/http"
-// 	"time"
-// )
-
-// type responseWriter struct {
-// 	http.ResponseWriter
-// 	status int
-// }
-
-// func (w *responseWriter) WriteHeader(statusCode int) {
-// 	w.status = statusCode
-// 	w.ResponseWriter.WriteHeader(statusCode)
-// }
-
-// func Logging(next http.Handler) http.Handler {
-// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		start := time.Now()
-
-// 		writer := &responseWriter{
-// 			ResponseWriter: w,
-// 			status:         http.StatusOK,
-// 		}
-
-// 		next.ServeHTTP(writer, r)
-
-// 		log.Printf(
-// 			"request_id=%s method=%s path=%s status=%d duration=%s",
-// 			r.Header.Get(RequestIDHeader),
-// 			r.Method,
-// 			r.URL.Path,
-// 			writer.status,
-// 			time.Since(start),
-// 		)
-// 	})
-// }
-
 package middleware
 
 import (
 	"log/slog"
-	"net/http"
 	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 )
 
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
+func Logging(logger *slog.Logger) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		startedAt := time.Now()
 
-func (w *responseWriter) WriteHeader(statusCode int) {
-	w.status = statusCode
-	w.ResponseWriter.WriteHeader(statusCode)
-}
+		err := c.Next()
 
-func Logging(logger *slog.Logger, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		statusCode := c.Response().StatusCode()
 
-		writer := &responseWriter{
-			ResponseWriter: w,
-			status:         http.StatusOK,
+		if err != nil {
+			statusCode = statusCodeFromError(err)
 		}
 
-		next.ServeHTTP(writer, r)
+		attributes := []any{
+			"request_id", requestid.FromContext(c),
+			"method", c.Method(),
+			"path", c.Path(),
+			"status", statusCode,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"ip", c.IP(),
+		}
 
-		logger.InfoContext(
-			r.Context(),
+		if err != nil {
+			attributes = append(attributes, "error", err)
+
+			logger.Error(
+				"http request failed",
+				attributes...,
+			)
+
+			return err
+		}
+
+		logger.Info(
 			"http request completed",
-			slog.String(
-				"request_id",
-				RequestIDFromContext(r.Context()),
-			),
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Int("status", writer.status),
-			slog.Int64(
-				"duration_ms",
-				time.Since(start).Milliseconds(),
-			),
+			attributes...,
 		)
-	})
+
+		return nil
+	}
+}
+
+func statusCodeFromError(err error) int {
+	if fiberError, ok := err.(*fiber.Error); ok {
+		return fiberError.Code
+	}
+
+	return fiber.StatusInternalServerError
 }
