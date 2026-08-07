@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/panuwat39/my-api/internal/shared/fiberx"
+	"github.com/panuwat39/my-api/internal/shared/pagination"
 	"github.com/panuwat39/my-api/internal/user/model"
 	"github.com/panuwat39/my-api/internal/user/port"
 )
@@ -60,20 +61,34 @@ func (c *Controller) Create(ctx fiber.Ctx) error {
 }
 
 func (c *Controller) List(ctx fiber.Ctx) error {
-	users, err := c.service.List(ctx)
+	page := fiber.Query[int](
+		ctx,
+		"page",
+		pagination.DefaultPage,
+	)
+
+	limit := fiber.Query[int](
+		ctx,
+		"limit",
+		pagination.DefaultLimit,
+	)
+
+	query := pagination.NewQuery(page, limit)
+
+	users, total, err := c.service.List(ctx, query)
 	if err != nil {
 		return c.writeServiceError(ctx, err)
 	}
 
-	result := make(
+	items := make(
 		[]model.UserResponse,
 		0,
 		len(users),
 	)
 
 	for _, user := range users {
-		result = append(
-			result,
+		items = append(
+			items,
 			model.ToUserResponse(user),
 		)
 	}
@@ -81,7 +96,14 @@ func (c *Controller) List(ctx fiber.Ctx) error {
 	return fiberx.Success(
 		ctx,
 		fiber.StatusOK,
-		result,
+		pagination.Response{
+			Items: items,
+			Meta: pagination.NewMetadata(
+				query.Page,
+				query.Limit,
+				total,
+			),
+		},
 	)
 }
 

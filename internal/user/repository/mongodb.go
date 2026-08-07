@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/panuwat39/my-api/internal/shared/pagination"
 	"github.com/panuwat39/my-api/internal/user/model"
 	"github.com/panuwat39/my-api/internal/user/port"
 	userservice "github.com/panuwat39/my-api/internal/user/service"
@@ -116,36 +117,47 @@ func (r *MongoDBRepository) FindByEmail(
 
 func (r *MongoDBRepository) List(
 	ctx context.Context,
-) ([]model.User, error) {
+	query pagination.Query,
+) ([]model.User, int64, error) {
+	filter := bson.M{}
+
+	total, err := r.collection.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count users: %w", err)
+	}
+
 	cursor, err := r.collection.Find(
 		ctx,
-		bson.M{},
-		options.Find().SetSort(bson.D{
-			{Key: "created_at", Value: -1},
-		}),
+		filter,
+		options.Find().
+			SetSort(bson.D{
+				{Key: "created_at", Value: -1},
+			}).
+			SetSkip(query.Skip()).
+			SetLimit(int64(query.Limit)),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("find users: %w", err)
+		return nil, 0, fmt.Errorf("find users: %w", err)
 	}
 	defer cursor.Close(ctx)
 
-	users := make([]model.User, 0)
+	users := make([]model.User, 0, query.Limit)
 
 	for cursor.Next(ctx) {
 		var document userDocument
 
 		if err := cursor.Decode(&document); err != nil {
-			return nil, fmt.Errorf("decode user: %w", err)
+			return nil, 0, fmt.Errorf("decode user: %w", err)
 		}
 
 		users = append(users, document.toModel())
 	}
 
 	if err := cursor.Err(); err != nil {
-		return nil, fmt.Errorf("iterate users: %w", err)
+		return nil, 0, fmt.Errorf("iterate users: %w", err)
 	}
 
-	return users, nil
+	return users, total, nil
 }
 
 func (r *MongoDBRepository) Update(

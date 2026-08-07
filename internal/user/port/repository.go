@@ -3,6 +3,7 @@ package port
 import (
 	"context"
 
+	"github.com/panuwat39/my-api/internal/shared/pagination"
 	"github.com/panuwat39/my-api/internal/user/model"
 )
 
@@ -24,7 +25,8 @@ type UserRepository interface {
 
 	List(
 		ctx context.Context,
-	) ([]model.User, error)
+		query pagination.Query,
+	) ([]model.User, int64, error)
 
 	Update(
 		ctx context.Context,

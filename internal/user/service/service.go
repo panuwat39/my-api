@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/panuwat39/my-api/internal/shared/pagination"
 	"github.com/panuwat39/my-api/internal/user/model"
 	"github.com/panuwat39/my-api/internal/user/port"
 )
@@ -71,8 +72,9 @@ func (s *Service) GetByID(
 
 func (s *Service) List(
 	ctx context.Context,
-) ([]model.User, error) {
-	return s.repository.List(ctx)
+	query pagination.Query,
+) ([]model.User, int64, error) {
+	return s.repository.List(ctx, query)
 }
 
 func (s *Service) Update(
