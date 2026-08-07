@@ -1,27 +1,29 @@
 APP_NAME := my-api
 MAIN_PATH := ./cmd/api
 COMPOSE_FILE := deployments/docker/docker-compose.yml
+ENV_FILE := .env
 
 .PHONY: help run fmt vet test check build clean \
-	mongo-up mongo-down mongo-status mongo-logs
+	mongo-up mongo-down mongo-status mongo-logs \
+	docker-build docker-up docker-down docker-status docker-logs
 
 help:
 	@echo "Available commands:"
-	@echo "  make run           Run API with .env"
-	@echo "  make fmt           Format Go files"
+	@echo "  make run           Run API locally"
+	@echo "  make fmt           Format Go code"
 	@echo "  make vet           Run go vet"
-	@echo "  make test          Run all tests"
-	@echo "  make check         Run format, vet and tests"
-	@echo "  make build         Build application"
-	@echo "  make clean         Remove build output"
-	@echo "  make mongo-up      Start MongoDB"
-	@echo "  make mongo-down    Stop MongoDB"
-	@echo "  make mongo-status  Show MongoDB status"
-	@echo "  make mongo-logs    Follow MongoDB logs"
+	@echo "  make test          Run tests"
+	@echo "  make check         Run fmt, vet, and test"
+	@echo "  make build         Build local binary"
+	@echo "  make docker-build  Build Docker images"
+	@echo "  make docker-up     Start API + MongoDB"
+	@echo "  make docker-down   Stop API + MongoDB"
+	@echo "  make docker-status Show container status"
+	@echo "  make docker-logs   Follow API logs"
 
 run:
-	@test -f .env || (echo ".env file not found"; exit 1)
-	@set -a; . ./.env; set +a; go run $(MAIN_PATH)
+	@test -f $(ENV_FILE) || (echo ".env file not found"; exit 1)
+	@set -a; . ./$(ENV_FILE); set +a; go run $(MAIN_PATH)
 
 fmt:
 	@gofmt -w $$(find . -type f -name '*.go' -not -path './vendor/*')
@@ -42,13 +44,28 @@ clean:
 	@rm -rf bin coverage.out
 
 mongo-up:
-	@docker compose -f $(COMPOSE_FILE) up -d
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) up -d mongodb
 
 mongo-down:
-	@docker compose -f $(COMPOSE_FILE) down
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) stop mongodb
 
 mongo-status:
-	@docker compose -f $(COMPOSE_FILE) ps
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) ps mongodb
 
 mongo-logs:
-	@docker compose -f $(COMPOSE_FILE) logs -f mongodb
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) logs -f mongodb
+
+docker-build:
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) build
+
+docker-up:
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) up -d
+
+docker-down:
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down
+
+docker-status:
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) ps
+
+docker-logs:
+	@docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) logs -f api
