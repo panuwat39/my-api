@@ -17,7 +17,14 @@ import (
 
 func TestMongoDBRepositoryListPagination(t *testing.T) {
 	uri := os.Getenv("MONGO_TEST_URI")
-	databaseName := os.Getenv("MONGO_TEST_DATABASE")
+
+	baseDatabaseName := os.Getenv("MONGO_TEST_DATABASE")
+
+	if baseDatabaseName == "" {
+		t.Fatal("MONGO_TEST_DATABASE is required")
+	}
+
+	databaseName := baseDatabaseName + "_repository"
 
 	if uri == "" {
 		t.Fatal("MONGO_TEST_URI is required")

@@ -39,8 +39,8 @@ func TestUserHTTPIntegration(t *testing.T) {
 		)
 		defer cleanupCancel()
 
-		if err := database.Collection("users").Drop(cleanupCtx); err != nil {
-			t.Errorf("drop users collection: %v", err)
+		if err := database.Drop(cleanupCtx); err != nil {
+			t.Errorf("drop test database: %v", err)
 		}
 
 		if err := client.Disconnect(cleanupCtx); err != nil {
@@ -197,7 +197,14 @@ func setupMongoDB(
 	t.Helper()
 
 	uri := os.Getenv("MONGO_TEST_URI")
-	databaseName := os.Getenv("MONGO_TEST_DATABASE")
+
+	baseDatabaseName := os.Getenv("MONGO_TEST_DATABASE")
+
+	if baseDatabaseName == "" {
+		t.Fatal("MONGO_TEST_DATABASE is required")
+	}
+
+	databaseName := baseDatabaseName + "_http"
 
 	if uri == "" {
 		t.Fatal("MONGO_TEST_URI is required")
