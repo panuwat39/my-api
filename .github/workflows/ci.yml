@@ -9,6 +9,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   test:
     name: Test and Build
@@ -32,13 +36,15 @@ jobs:
     env:
       MONGO_TEST_URI: mongodb://root:root_password@127.0.0.1:27017/my_api_test?authSource=admin
       MONGO_TEST_DATABASE: my_api_test
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26.5"
           cache: true
@@ -68,9 +74,21 @@ jobs:
       - name: Build
         run: go build -o bin/my-api ./cmd/api
 
-      - name: Build Docker image
-        run: |
-          docker build \
-            -f deployments/docker/Dockerfile \
-            -t my-api:${{ github.sha }} \
-            .
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployments/docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
