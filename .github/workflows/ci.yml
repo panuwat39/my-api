@@ -1,18 +1,26 @@
-name: CI
-
-on:
-  push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
-
 jobs:
   test:
     name: Test and Build
     runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: root_password
+          MONGO_INITDB_DATABASE: my_api_test
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --username root --password root_password --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MONGO_TEST_URI: mongodb://root:root_password@127.0.0.1:27017/my_api_test?authSource=admin
+      MONGO_TEST_DATABASE: my_api_test
 
     steps:
       - name: Checkout repository
@@ -42,6 +50,9 @@ jobs:
 
       - name: Run tests
         run: go test ./...
+
+      - name: Run integration tests
+        run: go test -tags=integration -count=1 ./...
 
       - name: Build
         run: go build -o bin/my-api ./cmd/api
