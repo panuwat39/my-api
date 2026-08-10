@@ -67,3 +67,10 @@ jobs:
 
       - name: Build
         run: go build -o bin/my-api ./cmd/api
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f deployments/docker/Dockerfile \
+            -t my-api:${{ github.sha }} \
+            .
