@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/mail"
 	"strings"
 	"time"
@@ -13,12 +14,17 @@ import (
 )
 
 type Service struct {
-	repository port.UserRepository
+	repository     port.UserRepository
+	passwordHasher port.PasswordHasher
 }
 
-func New(repository port.UserRepository) *Service {
+func New(
+	repository port.UserRepository,
+	passwordHasher port.PasswordHasher,
+) *Service {
 	return &Service{
-		repository: repository,
+		repository:     repository,
+		passwordHasher: passwordHasher,
 	}
 }
 
@@ -27,7 +33,9 @@ func (s *Service) Create(
 	request model.CreateUserRequest,
 ) (model.User, error) {
 	name := strings.TrimSpace(request.Name)
-	email := strings.ToLower(strings.TrimSpace(request.Email))
+	email := strings.ToLower(
+		strings.TrimSpace(request.Email),
+	)
 
 	if name == "" {
 		return model.User{}, ErrInvalidUserName
@@ -37,23 +45,46 @@ func (s *Service) Create(
 		return model.User{}, ErrInvalidUserEmail
 	}
 
-	existingUser, err := s.repository.FindByEmail(ctx, email)
+	passwordBytes := []byte(request.Password)
+
+	if len(passwordBytes) < 8 ||
+		len(passwordBytes) > 72 {
+		return model.User{}, ErrInvalidUserPassword
+	}
+
+	existingUser, err := s.repository.FindByEmail(
+		ctx,
+		email,
+	)
 
 	switch {
 	case err == nil && existingUser.ID != "":
 		return model.User{}, ErrEmailAlreadyExists
 
-	case err != nil && !errors.Is(err, ErrUserNotFound):
+	case err != nil &&
+		!errors.Is(err, ErrUserNotFound):
 		return model.User{}, err
+	}
+
+	passwordHash, err := s.passwordHasher.Hash(
+		request.Password,
+	)
+	if err != nil {
+		return model.User{}, fmt.Errorf(
+			"hash user password: %w",
+			err,
+		)
 	}
 
 	now := time.Now().UTC()
 
 	user := model.User{
-		Name:      name,
-		Email:     email,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Name:         name,
+		Email:        email,
+		PasswordHash: passwordHash,
+		Role:         model.RoleUser,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	return s.repository.Create(ctx, user)
@@ -89,6 +120,7 @@ func (s *Service) Update(
 
 	if request.Name != nil {
 		name := strings.TrimSpace(*request.Name)
+
 		if name == "" {
 			return model.User{}, ErrInvalidUserName
 		}
@@ -97,20 +129,29 @@ func (s *Service) Update(
 	}
 
 	if request.Email != nil {
-		email := strings.ToLower(strings.TrimSpace(*request.Email))
+		email := strings.ToLower(
+			strings.TrimSpace(*request.Email),
+		)
+
 		if !isValidEmail(email) {
 			return model.User{}, ErrInvalidUserEmail
 		}
 
-		existingUser, err := s.repository.FindByEmail(ctx, email)
+		existingUser, err := s.repository.FindByEmail(
+			ctx,
+			email,
+		)
 
 		switch {
-		case err == nil && existingUser.ID != user.ID:
+		case err == nil &&
+			existingUser.ID != user.ID:
 			return model.User{}, ErrEmailAlreadyExists
 
-		case err != nil && !errors.Is(err, ErrUserNotFound):
+		case err != nil &&
+			!errors.Is(err, ErrUserNotFound):
 			return model.User{}, err
 		}
+
 		user.Email = email
 	}
 

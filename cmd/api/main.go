@@ -13,11 +13,21 @@ import (
 	"github.com/panuwat39/my-api/infrastructure/router"
 	"github.com/panuwat39/my-api/infrastructure/server"
 
+	sharedpassword "github.com/panuwat39/my-api/internal/shared/password"
 	usercontroller "github.com/panuwat39/my-api/internal/user/controller"
 	userrepository "github.com/panuwat39/my-api/internal/user/repository"
 	userservice "github.com/panuwat39/my-api/internal/user/service"
 
+	authcontroller "github.com/panuwat39/my-api/internal/auth/controller"
+	authservice "github.com/panuwat39/my-api/internal/auth/service"
+
+	sharedtoken "github.com/panuwat39/my-api/internal/shared/token"
+
 	mongodbmigration "github.com/panuwat39/my-api/migrations/mongodb"
+
+	authmiddleware "github.com/panuwat39/my-api/internal/auth/middleware"
+
+	usermodel "github.com/panuwat39/my-api/internal/user/model"
 )
 
 func main() {
@@ -72,8 +82,40 @@ func main() {
 		mongoDatabase,
 	)
 
+	passwordHasher := sharedpassword.NewHasher()
+
+	tokenIssuer, err := sharedtoken.NewJWTIssuer(
+		cfg.JWTSecret,
+		cfg.JWTIssuer,
+		cfg.JWTAccessTTL,
+	)
+	if err != nil {
+		appLogger.Error(
+			"jwt issuer initialization failed",
+			"error", err,
+		)
+
+		_ = database.DisconnectMongoDB(
+			mongoClient,
+		)
+
+		os.Exit(1)
+	}
+
+	authenticate := authmiddleware.Authenticate(tokenIssuer)
+
+	requireAdmin := authmiddleware.RequireRole(
+		string(usermodel.RoleAdmin),
+	)
+
+	requireSelfOrAdmin := authmiddleware.RequireSelfOrRole(
+		"id",
+		string(usermodel.RoleAdmin),
+	)
+
 	userService := userservice.New(
 		userRepository,
+		passwordHasher,
 	)
 
 	userController := usercontroller.New(
@@ -81,10 +123,25 @@ func main() {
 		appLogger,
 	)
 
+	authService := authservice.New(
+		userRepository,
+		passwordHasher,
+		tokenIssuer,
+	)
+
+	authController := authcontroller.New(
+		authService,
+		appLogger,
+	)
+
 	app := router.New(
 		router.Dependencies{
-			Logger:         appLogger,
-			UserController: userController,
+			Logger:             appLogger,
+			UserController:     userController,
+			AuthController:     authController,
+			AuthMiddleware:     authenticate,
+			RequireAdmin:       requireAdmin,
+			RequireSelfOrAdmin: requireSelfOrAdmin,
 		},
 	)
 

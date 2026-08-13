@@ -9,12 +9,18 @@ import (
 
 	sharedmiddleware "github.com/panuwat39/my-api/internal/shared/middleware"
 	sharedvalidator "github.com/panuwat39/my-api/internal/shared/validator"
+
+	authroute "github.com/panuwat39/my-api/internal/auth/route"
 	userroute "github.com/panuwat39/my-api/internal/user/route"
 )
 
 type Dependencies struct {
-	Logger         *slog.Logger
-	UserController userroute.UserController
+	Logger             *slog.Logger
+	UserController     userroute.UserController
+	AuthController     authroute.AuthController
+	AuthMiddleware     fiber.Handler
+	RequireAdmin       fiber.Handler
+	RequireSelfOrAdmin fiber.Handler
 }
 
 func New(dependencies Dependencies) *fiber.App {
@@ -45,10 +51,25 @@ func New(dependencies Dependencies) *fiber.App {
 
 	registerV1Routes(app)
 
-	if dependencies.UserController != nil {
+	if dependencies.UserController != nil &&
+		dependencies.AuthMiddleware != nil &&
+		dependencies.RequireAdmin != nil &&
+		dependencies.RequireSelfOrAdmin != nil {
 		userroute.RegisterV1(
 			app,
 			dependencies.UserController,
+			dependencies.AuthMiddleware,
+			dependencies.RequireAdmin,
+			dependencies.RequireSelfOrAdmin,
+		)
+	}
+
+	if dependencies.AuthController != nil &&
+		dependencies.AuthMiddleware != nil {
+		authroute.RegisterV1(
+			app,
+			dependencies.AuthController,
+			dependencies.AuthMiddleware,
 		)
 	}
 

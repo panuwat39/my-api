@@ -58,6 +58,14 @@ func (c *Controller) writeServiceError(
 			"user not found",
 		)
 
+	case errors.Is(err, userservice.ErrInvalidUserPassword):
+		return fiberx.Error(
+			ctx,
+			fiber.StatusBadRequest,
+			"INVALID_USER_PASSWORD",
+			"password must be between 8 and 72 bytes",
+		)
+
 	default:
 		c.logger.Error(
 			"user request failed",

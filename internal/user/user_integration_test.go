@@ -21,6 +21,8 @@ import (
 	"github.com/panuwat39/my-api/internal/user/service"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	sharedpassword "github.com/panuwat39/my-api/internal/shared/password"
 )
 
 func TestUserHTTPIntegration(t *testing.T) {
@@ -53,7 +55,8 @@ func TestUserHTTPIntegration(t *testing.T) {
 	t.Run("create user", func(t *testing.T) {
 		body := []byte(`{
 			"name": "Panuwat",
-			"email": "panuwat.integration@example.com"
+			"email": "panuwat.integration@example.com",
+			"password": "Password123"
 		}`)
 
 		request := httptest.NewRequest(
@@ -238,10 +241,19 @@ func setupMongoDB(
 	return client, database
 }
 
-func setupApp(database *mongo.Database) *fiber.App {
-	userRepository := repository.NewMongoDBRepository(database)
+func setupApp(
+	database *mongo.Database,
+) *fiber.App {
+	userRepository := repository.NewMongoDBRepository(
+		database,
+	)
 
-	userService := service.New(userRepository)
+	passwordHasher := sharedpassword.NewHasher()
+
+	userService := service.New(
+		userRepository,
+		passwordHasher,
+	)
 
 	logger := slog.New(
 		slog.NewTextHandler(

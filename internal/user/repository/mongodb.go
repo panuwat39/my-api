@@ -19,11 +19,13 @@ import (
 const userCollectionName = "users"
 
 type userDocument struct {
-	ID        bson.ObjectID `bson:"_id,omitempty"`
-	Name      string        `bson:"name"`
-	Email     string        `bson:"email"`
-	CreatedAt time.Time     `bson:"created_at"`
-	UpdatedAt time.Time     `bson:"updated_at"`
+	ID           bson.ObjectID `bson:"_id,omitempty"`
+	Name         string        `bson:"name"`
+	Email        string        `bson:"email"`
+	PasswordHash string        `bson:"password_hash"`
+	Role         model.Role    `bson:"role"`
+	CreatedAt    time.Time     `bson:"created_at"`
+	UpdatedAt    time.Time     `bson:"updated_at"`
 }
 
 type MongoDBRepository struct {
@@ -41,10 +43,12 @@ func (r *MongoDBRepository) Create(
 	user model.User,
 ) (model.User, error) {
 	document := userDocument{
-		Name:      user.Name,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
+		Name:         user.Name,
+		Email:        user.Email,
+		PasswordHash: user.PasswordHash,
+		Role:         user.Role,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
 	}
 
 	result, err := r.collection.InsertOne(ctx, document)
@@ -222,12 +226,20 @@ func (r *MongoDBRepository) Delete(
 }
 
 func (d userDocument) toModel() model.User {
+	role := d.Role
+
+	if !role.IsValid() {
+		role = model.RoleUser
+	}
+
 	return model.User{
-		ID:        d.ID.Hex(),
-		Name:      d.Name,
-		Email:     d.Email,
-		CreatedAt: d.CreatedAt,
-		UpdatedAt: d.UpdatedAt,
+		ID:           d.ID.Hex(),
+		Name:         d.Name,
+		Email:        d.Email,
+		PasswordHash: d.PasswordHash,
+		Role:         role,
+		CreatedAt:    d.CreatedAt,
+		UpdatedAt:    d.UpdatedAt,
 	}
 }
 
