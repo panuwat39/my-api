@@ -15,14 +15,24 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+
+	authmiddleware "github.com/panuwat39/my-api/internal/auth/middleware"
+
+	sharedpassword "github.com/panuwat39/my-api/internal/shared/password"
+	sharedtoken "github.com/panuwat39/my-api/internal/shared/token"
+
 	"github.com/panuwat39/my-api/internal/user/controller"
+	usermodel "github.com/panuwat39/my-api/internal/user/model"
 	"github.com/panuwat39/my-api/internal/user/repository"
 	"github.com/panuwat39/my-api/internal/user/route"
 	"github.com/panuwat39/my-api/internal/user/service"
+
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+)
 
-	sharedpassword "github.com/panuwat39/my-api/internal/shared/password"
+const (
+	testEmail = "panuwat.integration@example.com"
 )
 
 func TestUserHTTPIntegration(t *testing.T) {
@@ -32,7 +42,10 @@ func TestUserHTTPIntegration(t *testing.T) {
 	)
 	defer cancel()
 
-	client, database := setupMongoDB(t, ctx)
+	client, database := setupMongoDB(
+		t,
+		ctx,
+	)
 
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(
@@ -42,15 +55,26 @@ func TestUserHTTPIntegration(t *testing.T) {
 		defer cleanupCancel()
 
 		if err := database.Drop(cleanupCtx); err != nil {
-			t.Errorf("drop test database: %v", err)
+			t.Errorf(
+				"drop test database: %v",
+				err,
+			)
 		}
 
 		if err := client.Disconnect(cleanupCtx); err != nil {
-			t.Errorf("disconnect MongoDB: %v", err)
+			t.Errorf(
+				"disconnect MongoDB: %v",
+				err,
+			)
 		}
 	})
 
-	app := setupApp(database)
+	app, tokenIssuer := setupApp(
+		t,
+		database,
+	)
+
+	var createdUserID string
 
 	t.Run("create user", func(t *testing.T) {
 		body := []byte(`{
@@ -72,12 +96,17 @@ func TestUserHTTPIntegration(t *testing.T) {
 
 		response, err := app.Test(request)
 		if err != nil {
-			t.Fatalf("send request: %v", err)
+			t.Fatalf(
+				"send request: %v",
+				err,
+			)
 		}
 		defer response.Body.Close()
 
 		if response.StatusCode != fiber.StatusCreated {
-			responseBody, _ := io.ReadAll(response.Body)
+			responseBody, _ := io.ReadAll(
+				response.Body,
+			)
 
 			t.Fatalf(
 				"expected status %d, got %d: %s",
@@ -92,16 +121,24 @@ func TestUserHTTPIntegration(t *testing.T) {
 				ID    string `json:"id"`
 				Name  string `json:"name"`
 				Email string `json:"email"`
+				Role  string `json:"role"`
 			} `json:"data"`
 		}
 
-		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-			t.Fatalf("decode response: %v", err)
+		if err := json.NewDecoder(
+			response.Body,
+		).Decode(&result); err != nil {
+			t.Fatalf(
+				"decode response: %v",
+				err,
+			)
 		}
 
 		if result.Data.ID == "" {
 			t.Fatal("expected user ID")
 		}
+
+		createdUserID = result.Data.ID
 
 		if result.Data.Name != "Panuwat" {
 			t.Errorf(
@@ -110,29 +147,68 @@ func TestUserHTTPIntegration(t *testing.T) {
 			)
 		}
 
-		if result.Data.Email != "panuwat.integration@example.com" {
+		if result.Data.Email != testEmail {
 			t.Errorf(
 				"unexpected email: %s",
 				result.Data.Email,
 			)
 		}
+
+		if result.Data.Role != string(
+			usermodel.RoleUser,
+		) {
+			t.Errorf(
+				"expected role %s, got %s",
+				usermodel.RoleUser,
+				result.Data.Role,
+			)
+		}
 	})
 
-	t.Run("list users", func(t *testing.T) {
+	t.Run("list users as admin", func(t *testing.T) {
+		if createdUserID == "" {
+			t.Fatal(
+				"created user ID is required",
+			)
+		}
+
+		accessToken, err := tokenIssuer.IssueAccessToken(
+			ctx,
+			createdUserID,
+			testEmail,
+			string(usermodel.RoleAdmin),
+		)
+		if err != nil {
+			t.Fatalf(
+				"issue admin access token: %v",
+				err,
+			)
+		}
+
 		request := httptest.NewRequest(
 			http.MethodGet,
 			"/api/v1/users?page=1&limit=10",
 			nil,
 		)
 
+		request.Header.Set(
+			"Authorization",
+			"Bearer "+accessToken,
+		)
+
 		response, err := app.Test(request)
 		if err != nil {
-			t.Fatalf("send request: %v", err)
+			t.Fatalf(
+				"send request: %v",
+				err,
+			)
 		}
 		defer response.Body.Close()
 
 		if response.StatusCode != fiber.StatusOK {
-			responseBody, _ := io.ReadAll(response.Body)
+			responseBody, _ := io.ReadAll(
+				response.Body,
+			)
 
 			t.Fatalf(
 				"expected status %d, got %d: %s",
@@ -148,6 +224,7 @@ func TestUserHTTPIntegration(t *testing.T) {
 					ID    string `json:"id"`
 					Name  string `json:"name"`
 					Email string `json:"email"`
+					Role  string `json:"role"`
 				} `json:"items"`
 
 				Meta struct {
@@ -159,14 +236,39 @@ func TestUserHTTPIntegration(t *testing.T) {
 			} `json:"data"`
 		}
 
-		if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-			t.Fatalf("decode response: %v", err)
+		if err := json.NewDecoder(
+			response.Body,
+		).Decode(&result); err != nil {
+			t.Fatalf(
+				"decode response: %v",
+				err,
+			)
 		}
 
 		if len(result.Data.Items) != 1 {
 			t.Fatalf(
 				"expected 1 user, got %d",
 				len(result.Data.Items),
+			)
+		}
+
+		user := result.Data.Items[0]
+
+		if user.ID != createdUserID {
+			t.Errorf(
+				"expected user ID %s, got %s",
+				createdUserID,
+				user.ID,
+			)
+		}
+
+		if user.Role != string(
+			usermodel.RoleUser,
+		) {
+			t.Errorf(
+				"expected role %s, got %s",
+				usermodel.RoleUser,
+				user.Role,
 			)
 		}
 
@@ -199,51 +301,76 @@ func setupMongoDB(
 ) (*mongo.Client, *mongo.Database) {
 	t.Helper()
 
-	uri := os.Getenv("MONGO_TEST_URI")
+	uri := os.Getenv(
+		"MONGO_TEST_URI",
+	)
 
-	baseDatabaseName := os.Getenv("MONGO_TEST_DATABASE")
+	if uri == "" {
+		t.Fatal(
+			"MONGO_TEST_URI is required",
+		)
+	}
+
+	baseDatabaseName := os.Getenv(
+		"MONGO_TEST_DATABASE",
+	)
 
 	if baseDatabaseName == "" {
-		t.Fatal("MONGO_TEST_DATABASE is required")
+		t.Fatal(
+			"MONGO_TEST_DATABASE is required",
+		)
 	}
 
 	databaseName := baseDatabaseName + "_http"
-
-	if uri == "" {
-		t.Fatal("MONGO_TEST_URI is required")
-	}
-
-	if databaseName == "" {
-		t.Fatal("MONGO_TEST_DATABASE is required")
-	}
 
 	client, err := mongo.Connect(
 		options.Client().ApplyURI(uri),
 	)
 	if err != nil {
-		t.Fatalf("connect MongoDB: %v", err)
+		t.Fatalf(
+			"connect MongoDB: %v",
+			err,
+		)
 	}
 
-	if err := client.Ping(ctx, nil); err != nil {
-		_ = client.Disconnect(context.Background())
+	if err := client.Ping(
+		ctx,
+		nil,
+	); err != nil {
+		_ = client.Disconnect(
+			context.Background(),
+		)
 
-		t.Fatalf("ping MongoDB: %v", err)
+		t.Fatalf(
+			"ping MongoDB: %v",
+			err,
+		)
 	}
 
-	database := client.Database(databaseName)
+	database := client.Database(
+		databaseName,
+	)
 
-	if err := database.Collection("users").Drop(ctx); err != nil {
-		_ = client.Disconnect(context.Background())
+	if err := database.Drop(ctx); err != nil {
+		_ = client.Disconnect(
+			context.Background(),
+		)
 
-		t.Fatalf("drop users collection before test: %v", err)
+		t.Fatalf(
+			"drop database before test: %v",
+			err,
+		)
 	}
 
 	return client, database
 }
 
 func setupApp(
+	t *testing.T,
 	database *mongo.Database,
-) *fiber.App {
+) (*fiber.App, *sharedtoken.JWTIssuer) {
+	t.Helper()
+
 	userRepository := repository.NewMongoDBRepository(
 		database,
 	)
@@ -267,12 +394,40 @@ func setupApp(
 		logger,
 	)
 
+	tokenIssuer, err := sharedtoken.NewJWTIssuer(
+		"integration-test-jwt-secret-at-least-32-bytes",
+		"my-api-integration-test",
+		15*time.Minute,
+	)
+	if err != nil {
+		t.Fatalf(
+			"create JWT issuer: %v",
+			err,
+		)
+	}
+
+	authenticate := authmiddleware.Authenticate(
+		tokenIssuer,
+	)
+
+	requireAdmin := authmiddleware.RequireRole(
+		string(usermodel.RoleAdmin),
+	)
+
+	requireSelfOrAdmin := authmiddleware.RequireSelfOrRole(
+		"id",
+		string(usermodel.RoleAdmin),
+	)
+
 	app := fiber.New()
 
 	route.RegisterV1(
 		app,
 		userController,
+		authenticate,
+		requireAdmin,
+		requireSelfOrAdmin,
 	)
 
-	return app
+	return app, tokenIssuer
 }
